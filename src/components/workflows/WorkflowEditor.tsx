@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Plus, Save, Play } from "lucide-react";
+import { Plus, Save, Play, GitBranch } from "lucide-react";
 import type { Workflow, WorkflowStep } from "@/utils/langchainUtils";
-import { createBasicChain } from "@/utils/langchainUtils";
+import { executeWorkflow } from "@/utils/langchainUtils";
 import { supabase } from "@/integrations/supabase/client";
 
 export const WorkflowEditor = ({ 
@@ -37,6 +37,30 @@ export const WorkflowEditor = ({
       ...workflow,
       steps: [...workflow.steps, newStep],
     });
+  };
+
+  const addBranch = (stepId: string) => {
+    const step = workflow.steps.find(s => s.id === stepId);
+    if (step) {
+      const branches = step.branches || [];
+      const newStep: WorkflowStep = {
+        id: crypto.randomUUID(),
+        type: "process",
+        name: `Branch ${branches.length + 1}`,
+        prompt: "",
+      };
+      
+      setWorkflow({
+        ...workflow,
+        steps: [...workflow.steps, newStep],
+      });
+
+      // Update the original step with the new branch
+      updateStep(stepId, {
+        branches: [...branches, newStep.id],
+        condition: step.condition || "Evaluate the previous output and decide which branch to take.",
+      });
+    }
   };
 
   const updateStep = (stepId: string, updates: Partial<WorkflowStep>) => {
@@ -79,12 +103,13 @@ export const WorkflowEditor = ({
 
   const runWorkflow = async () => {
     try {
-      const chain = createBasicChain(workflow.steps[0]?.prompt || "");
-      const result = await chain.invoke({ input: "Start the workflow" });
+      const result = await executeWorkflow(workflow, "Start the workflow", {
+        startTime: new Date().toISOString(),
+      });
       
       toast({
         title: "Workflow Executed",
-        description: result,
+        description: `Result: ${result.output}`,
       });
     } catch (error: any) {
       toast({
@@ -126,16 +151,42 @@ export const WorkflowEditor = ({
 
         {workflow.steps.map((step) => (
           <Card key={step.id} className="p-4 space-y-4">
-            <Input
-              value={step.name}
-              onChange={(e) => updateStep(step.id, { name: e.target.value })}
-              placeholder="Step name"
-            />
+            <div className="flex justify-between items-center">
+              <Input
+                value={step.name}
+                onChange={(e) => updateStep(step.id, { name: e.target.value })}
+                placeholder="Step name"
+                className="flex-1 mr-2"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => addBranch(step.id)}
+                title="Add branch"
+              >
+                <GitBranch className="h-4 w-4" />
+              </Button>
+            </div>
+            
             <Input
               value={step.prompt || ""}
               onChange={(e) => updateStep(step.id, { prompt: e.target.value })}
               placeholder="Enter prompt for this step"
             />
+            
+            {step.branches && step.branches.length > 0 && (
+              <div className="mt-2">
+                <Label>Condition for branching</Label>
+                <Input
+                  value={step.condition || ""}
+                  onChange={(e) => updateStep(step.id, { condition: e.target.value })}
+                  placeholder="Enter condition for selecting branches"
+                />
+                <div className="mt-2 text-sm text-gray-500">
+                  Branches: {step.branches.join(", ")}
+                </div>
+              </div>
+            )}
           </Card>
         ))}
       </div>
