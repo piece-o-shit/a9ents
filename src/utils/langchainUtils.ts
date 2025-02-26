@@ -63,51 +63,42 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     error?: string;
   };
 
-  const graph = new StateGraph<{ channels: { state: { value: Config } } }>({
-    channels: {
-      state: {
-        value: {
-          input: "",
-          currentStep: "",
-          output: "",
-          context: {},
-        },
-      },
+  type State = {
+    value: Config;
+  };
+
+  const graph = new StateGraph<Config>({
+    value: {
+      input: "",
+      currentStep: "",
+      output: "",
+      context: {},
     },
   });
 
   // Add a single node that processes the current step
-  graph.addNode("__start__", async (config) => {
-    const state = config.channels.state.value;
-    const currentStep = workflow.steps.find(s => s.id === state.currentStep);
-    if (!currentStep) return { channels: { state: { value: state } } };
+  graph.addNode("__start__", async (state) => {
+    const currentStep = workflow.steps.find(s => s.id === state.value.currentStep);
+    if (!currentStep) return state;
 
     try {
       const chain = createBasicChain(currentStep.prompt || "");
       const result = await chain.invoke({
-        input: state.input,
-        context: state.context,
+        input: state.value.input,
+        context: state.value.context,
       });
 
       return {
-        channels: {
-          state: {
-            value: {
-              ...state,
-              output: result,
-            },
-          },
+        value: {
+          ...state.value,
+          output: result,
         },
       };
     } catch (error: any) {
       return {
-        channels: {
-          state: {
-            value: {
-              ...state,
-              error: error.message,
-            },
-          },
+        value: {
+          ...state.value,
+          error: error.message,
         },
       };
     }
@@ -120,14 +111,13 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     } else if (step.branches) {
       graph.addConditionalEdges(
         "__start__",
-        async (config) => {
-          const state = config.channels.state.value;
+        async (state) => {
           if (step.condition) {
             const chain = createBasicChain(step.condition);
             try {
               await chain.invoke({
-                input: state.output,
-                context: state.context,
+                input: state.value.output,
+                context: state.value.context,
               });
               return "__start__";
             } catch {
@@ -155,21 +145,17 @@ export const executeWorkflow = async (
   const graph = createWorkflowGraph(workflow);
   
   const initialState = {
-    channels: {
-      state: {
-        value: {
-          input,
-          currentStep: workflow.steps[0]?.id || "",
-          output: "",
-          context,
-        },
-      },
+    value: {
+      input,
+      currentStep: workflow.steps[0]?.id || "",
+      output: "",
+      context,
     },
   };
 
   try {
     const result = await graph.invoke(initialState);
-    return result.channels.state.value as WorkflowState;
+    return result.value as WorkflowState;
   } catch (error: any) {
     return {
       input,
