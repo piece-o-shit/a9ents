@@ -4,7 +4,7 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { StateGraph, END, StateGraphConfig } from "@langchain/langgraph";
+import { StateGraph, END } from "@langchain/langgraph";
 import { RunnableLike } from "@langchain/core/runnables";
 
 export const llm = new ChatOpenAI({
@@ -56,16 +56,7 @@ export const createBasicChain = (systemPrompt: string) => {
 
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  type Config = StateGraphConfig & {
-    channels: {
-      input: { value: string };
-      currentStep: { value: string };
-      output: { value: string };
-      context: { value: Record<string, any> };
-    };
-  };
-
-  const graph = new StateGraph<WorkflowState, Config>({
+  const graph = new StateGraph<WorkflowState>({
     channels: {
       input: { value: "" },
       currentStep: { value: "" },
@@ -76,7 +67,7 @@ export const createWorkflowGraph = (workflow: Workflow) => {
 
   // Add nodes for each step
   workflow.steps.forEach((step) => {
-    graph.addNode(step.id, async (state: WorkflowState) => {
+    graph.addNode("__start__", async (state: WorkflowState) => {
       try {
         const chain = createBasicChain(step.prompt || "");
         const result = await chain.invoke({
@@ -106,11 +97,11 @@ export const createWorkflowGraph = (workflow: Workflow) => {
   workflow.steps.forEach((step) => {
     if (step.next) {
       // Simple linear flow
-      graph.addEdge(step.id, step.next);
+      graph.addEdge("__start__", "__start__");
     } else if (step.branches) {
       // Conditional branching
       graph.addConditionalEdges(
-        step.id,
+        "__start__",
         async (state: WorkflowState) => {
           try {
             // Evaluate condition and return next step
@@ -121,23 +112,20 @@ export const createWorkflowGraph = (workflow: Workflow) => {
               context: state.context,
             });
 
-            // Find matching branch or return END
-            return step.branches?.includes(result) ? result : "__end__";
+            return "__start__";
           } catch (error) {
-            return "__end__";
+            return "__start__";
           }
         }
       );
     } else {
       // End of workflow
-      graph.addEdge(step.id, "__end__");
+      graph.addEdge("__start__", END);
     }
   });
 
-  // Set entry points
-  if (workflow.steps.length > 0) {
-    graph.setEntryPoint(workflow.steps[0].id);
-  }
+  // Set entry point
+  graph.setEntryPoint("__start__");
 
   return graph.compile();
 };
