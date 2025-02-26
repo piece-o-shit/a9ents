@@ -6,6 +6,7 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { StateGraph, END } from "@langchain/langgraph";
 import { RunnableLike } from "@langchain/core/runnables";
+import type { StateType } from "@langchain/langgraph/dist/types";
 
 export const llm = new ChatOpenAI({
   modelName: "gpt-4o-mini",
@@ -53,43 +54,51 @@ export const createBasicChain = (systemPrompt: string) => {
   ]);
 };
 
+interface GraphState {
+  workflow: WorkflowState;
+}
+
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  const graph = new StateGraph({
+  const initialState: GraphState = {
+    workflow: {
+      input: "",
+      currentStep: "",
+      output: "",
+      context: {},
+    },
+  };
+
+  const graph = new StateGraph<GraphState>({
     channels: {
-      state: {
-        value: {
-          input: "",
-          currentStep: "",
-          output: "",
-          context: {},
-        } satisfies WorkflowState,
+      workflow: {
+        value: initialState.workflow,
       },
     },
   });
 
   // Add a single node that processes the current step
-  graph.addNode("__start__", async (config: { state: WorkflowState }) => {
-    const currentStep = workflow.steps.find(s => s.id === config.state.currentStep);
-    if (!currentStep) return { state: config.state };
+  graph.addNode("__start__", async ({ workflow: state }) => {
+    const currentStep = workflow.steps.find(s => s.id === state.currentStep);
+    if (!currentStep) return { workflow: state };
 
     try {
       const chain = createBasicChain(currentStep.prompt || "");
       const result = await chain.invoke({
-        input: config.state.input,
-        context: config.state.context,
+        input: state.input,
+        context: state.context,
       });
 
       return {
-        state: {
-          ...config.state,
+        workflow: {
+          ...state,
           output: result,
         },
       };
     } catch (error: any) {
       return {
-        state: {
-          ...config.state,
+        workflow: {
+          ...state,
           error: error.message,
         },
       };
@@ -103,13 +112,13 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     } else if (step.branches) {
       graph.addConditionalEdges(
         "__start__",
-        async (config: { state: WorkflowState }) => {
+        async ({ workflow: state }) => {
           if (step.condition) {
             const chain = createBasicChain(step.condition);
             try {
               await chain.invoke({
-                input: config.state.output,
-                context: config.state.context,
+                input: state.output,
+                context: state.context,
               });
               return "__start__";
             } catch {
@@ -136,19 +145,21 @@ export const executeWorkflow = async (
 ) => {
   const graph = createWorkflowGraph(workflow);
   
-  const initialState: WorkflowState = {
-    input,
-    currentStep: workflow.steps[0]?.id || "",
-    output: "",
-    context,
+  const initialState: GraphState = {
+    workflow: {
+      input,
+      currentStep: workflow.steps[0]?.id || "",
+      output: "",
+      context,
+    },
   };
 
   try {
-    const result = await graph.invoke({ state: initialState });
-    return result.state as WorkflowState;
+    const result = await graph.invoke(initialState);
+    return result.workflow as WorkflowState;
   } catch (error: any) {
     return {
-      ...initialState,
+      ...initialState.workflow,
       error: error.message,
     };
   }
