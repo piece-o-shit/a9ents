@@ -4,7 +4,7 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { StateGraph, END } from "@langchain/langgraph";
+import { StateGraph, END, type StateDefinition } from "@langchain/langgraph";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 
 export const llm = new ChatOpenAI({
@@ -53,52 +53,45 @@ export const createBasicChain = (systemPrompt: string) => {
   ]);
 };
 
+// Define workflow state interface
+interface WorkflowStateDefinition extends StateDefinition {
+  input: string;
+  currentStep: string;
+  output: string;
+  context: Record<string, any>;
+  error?: string;
+}
+
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  type WorkflowConfig = {
-    channels: {
-      input: { value: string };
-      currentStep: { value: string };
-      output: { value: string };
-      context: { value: Record<string, any> };
-      error: { value: string | undefined };
-    };
-  };
-
-  const graph = new StateGraph<WorkflowConfig>({
-    channels: {
-      input: { value: workflow.initialState?.input || "" },
-      currentStep: { value: workflow.steps[0]?.id || "" },
-      output: { value: "" },
-      context: { value: {} },
-      error: { value: undefined },
-    },
+  const graph = new StateGraph<WorkflowStateDefinition>({
+    input: workflow.initialState?.input || "",
+    currentStep: workflow.steps[0]?.id || "",
+    output: "",
+    context: {},
+    error: undefined,
   });
 
   // Add a single node that processes the current step
-  graph.addNode("__start__", async (config) => {
-    const step = workflow.steps.find(s => s.id === config.channels.currentStep.value);
-    if (!step) return { channels: config.channels };
+  graph.addNode("__start__", async (state) => {
+    const step = workflow.steps.find(s => s.id === state.currentStep);
+    if (!step) return state;
 
     try {
       const chain = createBasicChain(step.prompt || "");
       const result = await chain.invoke({
-        input: config.channels.input.value,
-        context: config.channels.context.value,
+        input: state.input,
+        context: state.context,
       });
 
       return {
-        channels: {
-          ...config.channels,
-          output: { value: result },
-        },
+        ...state,
+        output: result
       };
     } catch (error: any) {
       return {
-        channels: {
-          ...config.channels,
-          error: { value: error.message },
-        },
+        ...state,
+        error: error.message
       };
     }
   });
@@ -110,13 +103,13 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     } else if (step.branches) {
       graph.addConditionalEdges(
         "__start__",
-        async (config) => {
+        async (state) => {
           if (step.condition) {
             const chain = createBasicChain(step.condition);
             try {
               await chain.invoke({
-                input: config.channels.output.value,
-                context: config.channels.context.value,
+                input: state.output,
+                context: state.context,
               });
               return "__start__";
             } catch {
@@ -144,23 +137,23 @@ export const executeWorkflow = async (
   const graph = createWorkflowGraph(workflow);
   
   try {
-    const result = await graph.invoke({
-      channels: {
-        input: { value: input },
-        currentStep: { value: workflow.steps[0]?.id || "" },
-        output: { value: "" },
-        context: { value: context },
-        error: { value: undefined },
-      },
-    });
+    const initialState: WorkflowStateDefinition = {
+      input,
+      currentStep: workflow.steps[0]?.id || "",
+      output: "",
+      context,
+      error: undefined,
+    };
+
+    const result = await graph.invoke(initialState);
     await awaitAllCallbacks();
     
     return {
       input,
       currentStep: workflow.steps[0]?.id || "",
-      output: result.channels.output.value || "",
+      output: result.output || "",
       context,
-      error: result.channels.error.value,
+      error: result.error,
     } as WorkflowState;
   } catch (error: any) {
     await awaitAllCallbacks();
