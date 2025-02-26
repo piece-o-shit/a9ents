@@ -4,7 +4,7 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import { StructuredOutputParser } from "langchain/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { StateGraph, END } from "@langchain/langgraph";
+import { StateGraph, END, StateGraphConfig } from "@langchain/langgraph";
 import { RunnableLike } from "@langchain/core/runnables";
 
 export const llm = new ChatOpenAI({
@@ -27,8 +27,8 @@ export type WorkflowStep = {
   name: string;
   prompt?: string;
   next?: string;
-  condition?: string; // Condition for branching
-  branches?: string[]; // Possible next steps
+  condition?: string;
+  branches?: string[];
 };
 
 export type Workflow = {
@@ -56,12 +56,21 @@ export const createBasicChain = (systemPrompt: string) => {
 
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  const graph = new StateGraph<WorkflowState>({
+  type Config = StateGraphConfig & {
     channels: {
-      input: {},
-      currentStep: {},
-      output: {},
-      context: {},
+      input: { value: string };
+      currentStep: { value: string };
+      output: { value: string };
+      context: { value: Record<string, any> };
+    };
+  };
+
+  const graph = new StateGraph<WorkflowState, Config>({
+    channels: {
+      input: { value: "" },
+      currentStep: { value: "" },
+      output: { value: "" },
+      context: { value: {} },
     },
   });
 
@@ -76,15 +85,18 @@ export const createWorkflowGraph = (workflow: Workflow) => {
         });
 
         return {
-          ...state,
-          output: result,
+          input: state.input,
           currentStep: step.id,
+          output: result,
+          context: state.context,
         };
       } catch (error: any) {
         return {
-          ...state,
-          error: error.message,
+          input: state.input,
           currentStep: step.id,
+          output: "",
+          error: error.message,
+          context: state.context,
         };
       }
     });
@@ -100,23 +112,32 @@ export const createWorkflowGraph = (workflow: Workflow) => {
       graph.addConditionalEdges(
         step.id,
         async (state: WorkflowState) => {
-          // Evaluate condition and return next step
-          const condition = step.condition || "";
-          const chain = createBasicChain(condition);
-          const result = await chain.invoke({
-            input: state.output,
-            context: state.context,
-          });
-          
-          // Find matching branch or return END
-          return step.branches?.includes(result) ? result : END;
+          try {
+            // Evaluate condition and return next step
+            const condition = step.condition || "";
+            const chain = createBasicChain(condition);
+            const result = await chain.invoke({
+              input: state.output,
+              context: state.context,
+            });
+
+            // Find matching branch or return END
+            return step.branches?.includes(result) ? result : "__end__";
+          } catch (error) {
+            return "__end__";
+          }
         }
       );
     } else {
       // End of workflow
-      graph.addEdge(step.id, END);
+      graph.addEdge(step.id, "__end__");
     }
   });
+
+  // Set entry points
+  if (workflow.steps.length > 0) {
+    graph.setEntryPoint(workflow.steps[0].id);
+  }
 
   return graph.compile();
 };
@@ -136,6 +157,13 @@ export const executeWorkflow = async (
     context,
   };
 
-  const result = await graph.invoke(initialState);
-  return result;
+  try {
+    const result = await graph.invoke({ state: initialState });
+    return result.state;
+  } catch (error: any) {
+    return {
+      ...initialState,
+      error: error.message,
+    };
+  }
 };
