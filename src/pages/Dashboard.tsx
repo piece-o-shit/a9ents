@@ -4,7 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Users, Settings, Bell, BookOpen, Database } from "lucide-react";
+import { 
+  Plus, 
+  Users, 
+  Settings, 
+  Bell, 
+  BookOpen, 
+  Database,
+  GitBranch,
+  Wrench,
+  MessageSquare,
+  Shield
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -121,15 +132,27 @@ const Dashboard = () => {
             <BookOpen className="h-4 w-4 mr-2" />
             Knowledge
           </TabsTrigger>
-          <TabsTrigger value="workflows">Workflows</TabsTrigger>
-          <TabsTrigger value="tools">Tools</TabsTrigger>
-          <TabsTrigger value="chat">Chat</TabsTrigger>
+          <TabsTrigger value="workflows">
+            <GitBranch className="h-4 w-4 mr-2" />
+            Workflows
+          </TabsTrigger>
+          <TabsTrigger value="tools">
+            <Wrench className="h-4 w-4 mr-2" />
+            Tools
+          </TabsTrigger>
+          <TabsTrigger value="chat">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Chat
+          </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </TabsTrigger>
           {profile?.is_admin && (
-            <TabsTrigger value="admin">Admin</TabsTrigger>
+            <TabsTrigger value="admin">
+              <Shield className="h-4 w-4 mr-2" />
+              Admin
+            </TabsTrigger>
           )}
         </TabsList>
 
