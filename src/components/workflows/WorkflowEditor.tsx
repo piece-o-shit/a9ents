@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Plus, Save, Play, GitBranch } from "lucide-react";
-import type { Workflow, WorkflowStep } from "@/utils/langchainUtils";
+import type { Workflow, WorkflowStep, WorkflowState } from "@/utils/langchainUtils";
 import { executeWorkflow } from "@/utils/langchainUtils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -107,9 +107,14 @@ export const WorkflowEditor = ({
         startTime: new Date().toISOString(),
       });
       
+      const message = result.error 
+        ? `Error: ${result.error}`
+        : `Result: ${result.output || 'No output'}`;
+      
       toast({
         title: "Workflow Executed",
-        description: `Result: ${result.output}`,
+        description: message,
+        variant: result.error ? "destructive" : "default",
       });
     } catch (error: any) {
       toast({

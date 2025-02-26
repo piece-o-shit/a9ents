@@ -12,7 +12,6 @@ export const llm = new ChatOpenAI({
   temperature: 0.7,
 });
 
-// Enhanced workflow types to support LangGraph
 export type WorkflowState = {
   input: string;
   currentStep: string;
@@ -54,79 +53,86 @@ export const createBasicChain = (systemPrompt: string) => {
   ]);
 };
 
+type StateUpdate = Partial<WorkflowState> & {
+  input?: string;
+  currentStep?: string;
+  output?: string;
+  error?: string;
+  context?: Record<string, any>;
+};
+
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  const graph = new StateGraph<WorkflowState>({
+  const initialState: WorkflowState = {
+    input: "",
+    currentStep: "",
+    output: "",
+    context: {},
+  };
+
+  const graph = new StateGraph({
     channels: {
-      input: { value: "" },
-      currentStep: { value: "" },
-      output: { value: "" },
-      context: { value: {} },
+      state: { value: initialState },
     },
   });
 
-  // Add nodes for each step
-  workflow.steps.forEach((step) => {
-    graph.addNode("__start__", async (state: WorkflowState) => {
-      try {
-        const chain = createBasicChain(step.prompt || "");
-        const result = await chain.invoke({
-          input: state.input,
-          context: state.context,
-        });
+  // Add a single node that processes the current step
+  graph.addNode("process", async ({ state }: { state: WorkflowState }) => {
+    const currentStep = workflow.steps.find(s => s.id === state.currentStep);
+    if (!currentStep) return { state };
 
-        return {
-          input: state.input,
-          currentStep: step.id,
+    try {
+      const chain = createBasicChain(currentStep.prompt || "");
+      const result = await chain.invoke({
+        input: state.input,
+        context: state.context,
+      });
+
+      return {
+        state: {
+          ...state,
           output: result,
-          context: state.context,
-        };
-      } catch (error: any) {
-        return {
-          input: state.input,
-          currentStep: step.id,
-          output: "",
+        },
+      };
+    } catch (error: any) {
+      return {
+        state: {
+          ...state,
           error: error.message,
-          context: state.context,
-        };
-      }
-    });
-  });
-
-  // Add edges between steps
-  workflow.steps.forEach((step) => {
-    if (step.next) {
-      // Simple linear flow
-      graph.addEdge("__start__", "__start__");
-    } else if (step.branches) {
-      // Conditional branching
-      graph.addConditionalEdges(
-        "__start__",
-        async (state: WorkflowState) => {
-          try {
-            // Evaluate condition and return next step
-            const condition = step.condition || "";
-            const chain = createBasicChain(condition);
-            const result = await chain.invoke({
-              input: state.output,
-              context: state.context,
-            });
-
-            return "__start__";
-          } catch (error) {
-            return "__start__";
-          }
-        }
-      );
-    } else {
-      // End of workflow
-      graph.addEdge("__start__", END);
+        },
+      };
     }
   });
 
-  // Set entry point
-  graph.setEntryPoint("__start__");
+  // Add conditional logic for step transitions
+  workflow.steps.forEach((step) => {
+    if (step.next) {
+      graph.addEdge("process", "process");
+    } else if (step.branches) {
+      graph.addConditionalEdges(
+        "process",
+        async ({ state }: { state: WorkflowState }) => {
+          if (step.condition) {
+            const chain = createBasicChain(step.condition);
+            try {
+              const result = await chain.invoke({
+                input: state.output,
+                context: state.context,
+              });
+              return "process";
+            } catch {
+              return END;
+            }
+          }
+          return END;
+        }
+      );
+    } else {
+      graph.addEdge("process", END);
+    }
+  });
 
+  graph.setEntryPoint("process");
   return graph.compile();
 };
 
@@ -147,7 +153,7 @@ export const executeWorkflow = async (
 
   try {
     const result = await graph.invoke({ state: initialState });
-    return result.state;
+    return result.state as WorkflowState;
   } catch (error: any) {
     return {
       ...initialState,
