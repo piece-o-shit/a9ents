@@ -55,44 +55,41 @@ export const createBasicChain = (systemPrompt: string) => {
 
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  const initialState: WorkflowState = {
-    input: "",
-    currentStep: "",
-    output: "",
-    context: {},
-  };
-
   const graph = new StateGraph({
     channels: {
-      input: { value: "" },
-      currentStep: { value: "" },
-      output: { value: "" },
-      context: { value: {} },
+      state: {
+        value: {
+          input: "",
+          currentStep: "",
+          output: "",
+          context: {},
+        } satisfies WorkflowState,
+      },
     },
   });
 
   // Add a single node that processes the current step
-  graph.addNode("__start__", async ({ state }: { state: WorkflowState }) => {
-    const currentStep = workflow.steps.find(s => s.id === state.currentStep);
-    if (!currentStep) return { state };
+  graph.addNode("__start__", async (config: { state: WorkflowState }) => {
+    const currentStep = workflow.steps.find(s => s.id === config.state.currentStep);
+    if (!currentStep) return { state: config.state };
 
     try {
       const chain = createBasicChain(currentStep.prompt || "");
       const result = await chain.invoke({
-        input: state.input,
-        context: state.context,
+        input: config.state.input,
+        context: config.state.context,
       });
 
       return {
         state: {
-          ...state,
+          ...config.state,
           output: result,
         },
       };
     } catch (error: any) {
       return {
         state: {
-          ...state,
+          ...config.state,
           error: error.message,
         },
       };
@@ -106,13 +103,13 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     } else if (step.branches) {
       graph.addConditionalEdges(
         "__start__",
-        async ({ state }: { state: WorkflowState }) => {
+        async (config: { state: WorkflowState }) => {
           if (step.condition) {
             const chain = createBasicChain(step.condition);
             try {
-              const result = await chain.invoke({
-                input: state.output,
-                context: state.context,
+              await chain.invoke({
+                input: config.state.output,
+                context: config.state.context,
               });
               return "__start__";
             } catch {
