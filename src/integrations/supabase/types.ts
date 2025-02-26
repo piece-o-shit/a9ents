@@ -9,7 +9,98 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      chat_memory: {
+        Row: {
+          chatflow_id: string | null
+          created_at: string | null
+          id: string
+          messages: Json[]
+          session_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          chatflow_id?: string | null
+          created_at?: string | null
+          id?: string
+          messages?: Json[]
+          session_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          chatflow_id?: string | null
+          created_at?: string | null
+          id?: string
+          messages?: Json[]
+          session_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_memory_chatflow_id_fkey"
+            columns: ["chatflow_id"]
+            isOneToOne: false
+            referencedRelation: "chatflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chatflows: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          flow_data: Json
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["workflow_status"] | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          flow_data: Json
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["workflow_status"] | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          flow_data?: Json
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["workflow_status"] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      tools: {
+        Row: {
+          configuration: Json | null
+          created_at: string | null
+          id: string
+          name: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          name: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +109,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      workflow_status: "active" | "draft" | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
