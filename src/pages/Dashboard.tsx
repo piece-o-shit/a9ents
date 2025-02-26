@@ -1,11 +1,10 @@
-
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Users, Settings, Bell } from "lucide-react";
+import { Plus, Users, Settings, Bell, BookOpen, Database } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -112,11 +111,23 @@ const Dashboard = () => {
       </div>
 
       <Tabs defaultValue="dashboard" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="agents">
+            <Users className="h-4 w-4 mr-2" />
+            Agents
+          </TabsTrigger>
+          <TabsTrigger value="knowledge">
+            <BookOpen className="h-4 w-4 mr-2" />
+            Knowledge
+          </TabsTrigger>
           <TabsTrigger value="workflows">Workflows</TabsTrigger>
           <TabsTrigger value="tools">Tools</TabsTrigger>
           <TabsTrigger value="chat">Chat</TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </TabsTrigger>
           {profile?.is_admin && (
             <TabsTrigger value="admin">Admin</TabsTrigger>
           )}
@@ -135,10 +146,49 @@ const Dashboard = () => {
                     Welcome to your Flowise dashboard! We'll keep you updated with the latest changes and notifications here.
                   </p>
                 </div>
-                {/* Placeholder for future notifications */}
                 <div className="text-sm text-center text-muted-foreground">
                   No new notifications at this time
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="agents">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  AI Agents
+                </h2>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Agent
+                </Button>
+              </div>
+              <div className="text-sm text-center text-muted-foreground">
+                No agents configured. Create your first AI agent to get started!
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="knowledge">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Knowledge Base
+                </h2>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Source
+                </Button>
+              </div>
+              <div className="text-sm text-center text-muted-foreground">
+                No knowledge sources added. Add documents or data sources to begin.
               </div>
             </CardContent>
           </Card>
@@ -187,6 +237,35 @@ const Dashboard = () => {
           <div className="text-center py-8">
             Chat interface coming soon...
           </div>
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center mb-6">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  System Settings
+                </h2>
+              </div>
+              <div className="space-y-4">
+                <div className="grid gap-4">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <h3 className="font-medium mb-2">General Settings</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Configure your application settings and preferences here.
+                    </p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <h3 className="font-medium mb-2">API Configuration</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage your API keys and integrations.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {profile?.is_admin && (
