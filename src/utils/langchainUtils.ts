@@ -3,7 +3,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { StateGraph, END, type ChannelDefinition, type UpdateType } from "@langchain/langgraph";
+import { StateGraph, END, type StateDefinition, ValueChannel } from "@langchain/langgraph";
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 
 export const llm = new ChatOpenAI({
@@ -11,17 +11,23 @@ export const llm = new ChatOpenAI({
   temperature: 0.7,
 });
 
-// Define channel-based state structure
-export interface WorkflowChannels extends ChannelDefinition {
-  input: string;
-  currentStep: string;
-  output: string;
-  context: Record<string, any>;
-  error: string | undefined;
+// Define workflow channel types
+export interface WorkflowStateChannels extends StateDefinition {
+  input: ValueChannel<string>;
+  currentStep: ValueChannel<string>;
+  output: ValueChannel<string>;
+  context: ValueChannel<Record<string, any>>;
+  error: ValueChannel<string | undefined>;
 }
 
 // Define public-facing state type
-export type WorkflowState = WorkflowChannels;
+export type WorkflowState = {
+  input: string;
+  currentStep: string;
+  output: string;
+  error?: string;
+  context: Record<string, any>;
+};
 
 export type WorkflowStep = {
   id: string;
@@ -39,7 +45,7 @@ export type Workflow = {
   description: string;
   steps: WorkflowStep[];
   status: 'active' | 'draft' | 'archived';
-  initialState?: Partial<Pick<WorkflowState, 'input' | 'context'>>;
+  initialState?: WorkflowState;
 };
 
 // Create a basic chain with error handling
@@ -58,28 +64,30 @@ export const createBasicChain = (systemPrompt: string) => {
 
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  const graph = new StateGraph<WorkflowChannels>({
+  const graph = new StateGraph<WorkflowStateChannels>({
     channels: {
-      input: workflow.initialState?.input || "",
-      currentStep: workflow.steps[0]?.id || "",
-      output: "",
-      context: workflow.initialState?.context || {},
-      error: undefined,
+      input: new ValueChannel(workflow.initialState?.input || ""),
+      currentStep: new ValueChannel(workflow.steps[0]?.id || ""),
+      output: new ValueChannel(""),
+      context: new ValueChannel(workflow.initialState?.context || {}),
+      error: new ValueChannel(undefined),
     },
   });
 
   // Add a single node that processes the current step
-  graph.addNode("processStep", async (state: WorkflowState): Promise<UpdateType<WorkflowChannels>> => {
-    const step = workflow.steps.find(s => s.id === state.currentStep);
+  graph.addNode("__start__", async (state) => {
+    const step = workflow.steps.find(s => s.id === state.currentStep.value);
     if (!step) {
-      return { currentStep: END };
+      return {
+        currentStep: END,
+      };
     }
 
     try {
       const chain = createBasicChain(step.prompt || "");
       const result = await chain.invoke({
-        input: state.input,
-        context: state.context,
+        input: state.input.value,
+        context: state.context.value,
       });
 
       return {
@@ -94,33 +102,35 @@ export const createWorkflowGraph = (workflow: Workflow) => {
     }
   });
 
-  // Configure edges based on workflow steps
+  // Add conditional logic for step transitions
   workflow.steps.forEach((step) => {
     if (step.next) {
-      graph.addEdge(step.id, "processStep");
-    } else if (step.branches && step.condition) {
+      graph.addEdge("__start__", "__start__");
+    } else if (step.branches) {
       graph.addConditionalEdges(
-        step.id,
-        async (state: WorkflowState) => {
-          const chain = createBasicChain(step.condition!);
-          try {
-            await chain.invoke({
-              input: state.output,
-              context: state.context,
-            });
-            return step.branches![0]; // Success branch
-          } catch {
-            return step.branches![1] || END; // Failure branch or end
+        "__start__",
+        async (state) => {
+          if (step.condition) {
+            const chain = createBasicChain(step.condition);
+            try {
+              await chain.invoke({
+                input: state.output.value,
+                context: state.context.value,
+              });
+              return "__start__";
+            } catch {
+              return END;
+            }
           }
-        },
-        step.branches
+          return END;
+        }
       );
     } else {
-      graph.addEdge(step.id, END);
+      graph.addEdge("__start__", END);
     }
   });
 
-  graph.setEntryPoint(workflow.steps[0]?.id || "processStep");
+  graph.setEntryPoint("__start__");
   return graph.compile();
 };
 
@@ -131,20 +141,26 @@ export const executeWorkflow = async (
   context: Record<string, any> = {}
 ): Promise<WorkflowState> => {
   const graph = createWorkflowGraph(workflow);
-
-  const initialState: WorkflowState = {
-    input,
-    currentStep: workflow.steps[0]?.id || "",
-    output: "",
-    context,
-    error: undefined,
-  };
-
+  
   try {
+    const initialState = {
+      input: new ValueChannel(input),
+      currentStep: new ValueChannel(workflow.steps[0]?.id || ""),
+      output: new ValueChannel(""),
+      context: new ValueChannel(context),
+      error: new ValueChannel(undefined),
+    };
+
     const result = await graph.invoke(initialState);
     await awaitAllCallbacks();
     
-    return result;
+    return {
+      input,
+      currentStep: workflow.steps[0]?.id || "",
+      output: result.output?.value || "",
+      context,
+      error: result.error?.value,
+    };
   } catch (error: any) {
     await awaitAllCallbacks();
     return {
