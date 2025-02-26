@@ -55,51 +55,36 @@ export const createBasicChain = (systemPrompt: string) => {
 
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
-  type Config = {
-    input: string;
-    currentStep: string;
-    output: string;
-    context: Record<string, any>;
-    error?: string;
-  };
-
-  type State = {
-    value: Config;
-  };
-
-  const graph = new StateGraph<Config>({
-    value: {
-      input: "",
-      currentStep: "",
+  const graph = new StateGraph({
+    channels: {
+      input: workflow.initialState?.input || "",
+      currentStep: workflow.steps[0]?.id || "",
       output: "",
       context: {},
+      error: undefined as string | undefined,
     },
   });
 
   // Add a single node that processes the current step
   graph.addNode("__start__", async (state) => {
-    const currentStep = workflow.steps.find(s => s.id === state.value.currentStep);
+    const currentStep = workflow.steps.find(s => s.id === state.currentStep);
     if (!currentStep) return state;
 
     try {
       const chain = createBasicChain(currentStep.prompt || "");
       const result = await chain.invoke({
-        input: state.value.input,
-        context: state.value.context,
+        input: state.input,
+        context: state.context,
       });
 
       return {
-        value: {
-          ...state.value,
-          output: result,
-        },
+        ...state,
+        output: result,
       };
     } catch (error: any) {
       return {
-        value: {
-          ...state.value,
-          error: error.message,
-        },
+        ...state,
+        error: error.message,
       };
     }
   });
@@ -116,8 +101,8 @@ export const createWorkflowGraph = (workflow: Workflow) => {
             const chain = createBasicChain(step.condition);
             try {
               await chain.invoke({
-                input: state.value.output,
-                context: state.value.context,
+                input: state.output,
+                context: state.context,
               });
               return "__start__";
             } catch {
@@ -145,17 +130,16 @@ export const executeWorkflow = async (
   const graph = createWorkflowGraph(workflow);
   
   const initialState = {
-    value: {
-      input,
-      currentStep: workflow.steps[0]?.id || "",
-      output: "",
-      context,
-    },
+    input,
+    currentStep: workflow.steps[0]?.id || "",
+    output: "",
+    context,
+    error: undefined,
   };
 
   try {
     const result = await graph.invoke(initialState);
-    return result.value as WorkflowState;
+    return result as WorkflowState;
   } catch (error: any) {
     return {
       input,
