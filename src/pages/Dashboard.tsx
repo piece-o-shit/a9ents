@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Users, Settings } from "lucide-react";
+import { Plus, Users, Settings, Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -111,8 +111,9 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="workflows" className="space-y-4">
+      <Tabs defaultValue="dashboard" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="workflows">Workflows</TabsTrigger>
           <TabsTrigger value="tools">Tools</TabsTrigger>
           <TabsTrigger value="chat">Chat</TabsTrigger>
@@ -120,6 +121,28 @@ const Dashboard = () => {
             <TabsTrigger value="admin">Admin</TabsTrigger>
           )}
         </TabsList>
+
+        <TabsContent value="dashboard">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Bell className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold">Recent Updates</h2>
+              </div>
+              <div className="space-y-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    Welcome to your Flowise dashboard! We'll keep you updated with the latest changes and notifications here.
+                  </p>
+                </div>
+                {/* Placeholder for future notifications */}
+                <div className="text-sm text-center text-muted-foreground">
+                  No new notifications at this time
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="workflows" className="space-y-4">
           <div className="flex justify-end">
