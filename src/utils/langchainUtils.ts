@@ -53,14 +53,6 @@ export const createBasicChain = (systemPrompt: string) => {
   ]);
 };
 
-type StateUpdate = Partial<WorkflowState> & {
-  input?: string;
-  currentStep?: string;
-  output?: string;
-  error?: string;
-  context?: Record<string, any>;
-};
-
 // Create a workflow graph using LangGraph
 export const createWorkflowGraph = (workflow: Workflow) => {
   const initialState: WorkflowState = {
@@ -72,12 +64,15 @@ export const createWorkflowGraph = (workflow: Workflow) => {
 
   const graph = new StateGraph({
     channels: {
-      state: { value: initialState },
+      input: { value: "" },
+      currentStep: { value: "" },
+      output: { value: "" },
+      context: { value: {} },
     },
   });
 
   // Add a single node that processes the current step
-  graph.addNode("process", async ({ state }: { state: WorkflowState }) => {
+  graph.addNode("__start__", async ({ state }: { state: WorkflowState }) => {
     const currentStep = workflow.steps.find(s => s.id === state.currentStep);
     if (!currentStep) return { state };
 
@@ -107,10 +102,10 @@ export const createWorkflowGraph = (workflow: Workflow) => {
   // Add conditional logic for step transitions
   workflow.steps.forEach((step) => {
     if (step.next) {
-      graph.addEdge("process", "process");
+      graph.addEdge("__start__", "__start__");
     } else if (step.branches) {
       graph.addConditionalEdges(
-        "process",
+        "__start__",
         async ({ state }: { state: WorkflowState }) => {
           if (step.condition) {
             const chain = createBasicChain(step.condition);
@@ -119,7 +114,7 @@ export const createWorkflowGraph = (workflow: Workflow) => {
                 input: state.output,
                 context: state.context,
               });
-              return "process";
+              return "__start__";
             } catch {
               return END;
             }
@@ -128,11 +123,11 @@ export const createWorkflowGraph = (workflow: Workflow) => {
         }
       );
     } else {
-      graph.addEdge("process", END);
+      graph.addEdge("__start__", END);
     }
   });
 
-  graph.setEntryPoint("process");
+  graph.setEntryPoint("__start__");
   return graph.compile();
 };
 
