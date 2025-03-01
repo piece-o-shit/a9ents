@@ -1,7 +1,7 @@
 
-import { Users, Plus } from "lucide-react";
+import { Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { NewAgentDialog } from "./NewAgentDialog";
 
 export const AgentsTab = () => {
   return (
@@ -12,10 +12,7 @@ export const AgentsTab = () => {
             <Users className="h-5 w-5" />
             AI Agents
           </h2>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            New Agent
-          </Button>
+          <NewAgentDialog />
         </div>
         <div className="text-sm text-center text-muted-foreground">
           No agents configured. Create your first AI agent to get started!
